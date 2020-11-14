@@ -1,0 +1,123 @@
+---
+title: "Logitech Product Reviews"
+author: Meenakshi Rajgopal
+date: "`r format(Sys.time(), '%d. %B %Y')`"
+output: 
+    html_document:
+      number_sections: yes
+      toc: yes
+      toc_float: yes
+      fig_caption: true
+      theme: flatly
+---
+
+```{r setup, include=FALSE}
+rm(list = ls())
+knitr::opts_chunk$set(echo = TRUE, fig.pos = "H")
+knitr::opts_chunk$set(fig.pos = 'H')
+# import all libraries
+library(ggplot2)
+library(reshape2)
+library(zoo) # date transformations
+library(sentimentr)
+```
+
+# Joining data structures
+Q1. How would you join the two data structures (sales data and review data)  to setup the analysis ?
+
+```{r readdatas, echo=TRUE}
+# read all datas here
+prdid <- read.csv("data/PLSKU.csv", sep = ";", header = T)[, 1:2]
+prdreviews <- read.csv("data/PRODREVS.csv", header = T, stringsAsFactors = F)
+sales <- read.csv("data/SKUSALES.csv", sep = ";", skip = 1)
+
+
+# convert sales to numeric and replace ',' with '.'
+sales_only <- as.data.frame(sapply(sales[c(2:38)], function(x) as.numeric(gsub(",", "", x))))
+sales <- cbind(sales$PROD_SKU, sales_only)
+colnames(sales)[1] <- 'PROD_SKU'
+
+```
+
+
+## Product growth over the years
+Merge sales with productid. Then Aggregate sales for each product line. 
+
+Plot sales trend over the years for each product.
+
+```{r plot sales, echo=TRUE, fig.width=8, fig.height=5}
+# merge by column Unique ID
+saleswithid <- merge(prdid, sales, by="PROD_SKU")
+colnames(saleswithid)[2] <- "product_line"
+
+sales_agg <- aggregate(. ~ product_line, data = saleswithid[c(2:39)], sum) 
+
+# melt aggregated sales and plot
+sales_melt <- melt(sales_agg, id.vars = 'product_line')
+sales_melt$variable <- as.yearmon(sales_melt$variable, "%B.%Y")
+sales_melt$value <- as.numeric(sales_melt$value)
+sales_melt$product_line <- as.factor(sales_melt$product_line)
+
+
+ggplot(sales_melt, aes(x = variable, y = value))+
+  geom_line(aes(color = product_line), size=1)+
+  theme_minimal()
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+## Sales per quarter
+
+```{r plotquaterrls, echo=TRUE, fig.width=8, fig.height=5}
+sales_melt$qtr <- as.yearqtr(sales_melt$variable)
+qtr_sales <-  aggregate(value ~ product_line + qtr, data = sales_melt, sum)
+
+# plot quaterly sales
+ggplot(qtr_sales, aes(x = qtr, y = value))+
+  geom_line(aes(color = product_line), size=1)+
+  scale_y_continuous(labels = scales::comma) + 
+  theme_minimal()
+
+```
+
+# Product Sentiments
+
+```{r text_sentiments, echo=TRUE, fig.width=8, fig.height=5}
+sent <- get_sentences(prdreviews$review_text)
+reviewsentiments <- sentiment_by(sent)
+
+sent_df <- data.frame(product_line = prdreviews$product_line, date = prdreviews$review_date,
+                      ave_sentiment = reviewsentiments$ave_sentiment)
+sent_df$date <- format(as.Date(sent_df$date),'%B.%Y')
+sent_df$date <- as.yearmon(sent_df$date, "%B.%Y")
+
+# add prduct line variable for ggplot
+# sent_df$variable <- NA 
+# sent_df[sent_df$product_line == 'Protoss', ]$variable <- 1
+# sent_df[sent_df$product_line == 'Heat', ]$variable <- 2
+# sent_df[sent_df$product_line == 'Hyjal', ]$variable <- 3
+# 
+
+ggplot(sent_df, aes(x = date, y = ave_sentiment)) +
+  geom_point(aes(color = product_line))+ 
+  facet_wrap(~product_line) +
+  theme_minimal()
+
+```
+
+
+```{r plotsentiments, echo=TRUE, fig.width=8, fig.height=5}
+ggplot(sent_df, aes(y=ave_sentiment)) + geom_boxplot() + facet_wrap(~product_line) + theme_minimal()
+
+```
+
+
+## Aggregated product sentiments
+```{r}
+# Aggregate sentiment scores for each month and plot trend
+
+
+```
+
+
